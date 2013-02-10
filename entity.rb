@@ -1,12 +1,5 @@
 require 'active_record'
 
-ActiveRecord::Base.establish_connection(
-  :adapter => 'mysql2',
-  :database => 'littlesis',
-  :username => 'littlesis',
-  :password => 'OUMj5nQD9wgKg6aG'  
-)
-
 ActiveRecord::Base.pluralize_table_names = false
 
 class Entity < ActiveRecord::Base
