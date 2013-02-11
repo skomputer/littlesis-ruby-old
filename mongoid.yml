@@ -1,7 +1,4 @@
-production:
 development:
-  sessions:
-    default:
-      database: mongoid
-      hosts:
-        - localhost:27017
+  database: lilsis
+  host: localhost
+  port: 27017

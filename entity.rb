@@ -1,25 +1,53 @@
 require 'active_record'
+require 'mongoid'
+require './config.rb'
+require './node.rb'
+require './edge.rb'
+require 'pry'
 
 ActiveRecord::Base.pluralize_table_names = false
 
 class Entity < ActiveRecord::Base
 
   def migrate_to_mongo
+    raise "can't create mongo data from unpersisted data" if id.nil?
     create_node
-    create_edges
     create_sources
-    create_notes
     create_images
   end
 
   def create_node
-    node = Node.new(all_attributes)
+    return false unless node.nil?
+
+    hash = all_attributes
+    old_id = hash["id"]
+    hash.delete("id")
+    node = Node.new(hash)
+    node.old_id = old_id
     node.types = extension_names
     node.save
+
+    @node = node
   end
   
+  def node
+    @node ||= Node.where(old_id: id).first unless id.nil?
+  end
+  
+  def create_sources
+    raise "can't create sources before creating node" if node.nil?
+    Reference.where(:object_model => "Entity", :object_id => id).each do |ref|      
+      node.sources.create(name: ref.name, url: ref.source) unless node.has_source_url? ref.source
+    end
+  end
+  
+  def create_images
+  end
+    
   def all_attributes
-    attributes.merge!(extension_attributes)
+    hash = attributes.merge!(extension_attributes).reject { |k,v| v.nil? }
+    hash.delete(:notes)
+    hash
   end
   
   def extension_attributes
@@ -27,8 +55,8 @@ class Entity < ActiveRecord::Base
     (extension_names & self.class.all_extension_names_with_fields).each do |name|
       ext = Kernel.const_get(name).where(:entity_id => id).first
       ext_hash = ext.attributes
-      ext_hash.delete(:id)
-      ext_hash.delete(:entity_id)
+      ext_hash.delete("id")
+      ext_hash.delete("entity_id")
       hash.merge!(ext_hash)
     end
     hash
@@ -102,8 +130,117 @@ class Entity < ActiveRecord::Base
 end
 
 class Relationship < ActiveRecord::Base; end
+class Link < ActiveRecord::Base
+
+  def migrate_to_mongo
+    create_edges
+    create_sources
+  end
+
+  def create_edges
+    return false unless edge.nil?
+
+    create_edges
+  end
+  
+  def create_edges
+    create_edge(1)
+    create_edge(2)
+    edge1.reverse_of = edge2._id
+    edge1.save
+    edge2.reverse_of = edge1._id
+    edge2.save
+  end
+  
+  def create_edge(num)
+    other = ([1, 2] - [num]).first
+    hash = all_attributes
+    hash["node_id"] = hash["entity#{num}_id"]
+    hash.delete("entity#{num}_id")
+    hash["related_id"] = hash["entity#{other}_id"]
+    hash.delete("entity#{other}_id")
+    hash["description"] = hash["description#{num}"]
+    hash.delete("description#{num}")
+    hash.delete("description#{other}")
+    old_id = hash["id"]
+    hash.delete("id")
+    edge = Edge.new(hash)
+    edge.old_id = old_id
+    edge.category = category_name
+    edge.save
+    set_instance_variable("@edge#{num}".to_sym, edge)
+  end
+  
+  def edge1
+    @edge1 ||= Edge.where(old_id: id, node_id: entity1_id).first unless id.nil?
+  end
+  
+  def edge2
+    @edge2 ||= Edge.where(old_id: id, node_id: entity2_id).first unless id.nil?
+  end
+  
+  def create_sources
+    raise "can't create sources before creating node" if edge.nil?
+    Reference.where(:object_model => "Relationship", :object_id => id).each do |ref|      
+      edge1.sources.create(name: ref.name, url: ref.source) unless edge1.has_source_url? ref.source
+      edge2.sources.create(name: ref.name, url: ref.source) unless edge2.has_source_url? ref.source
+    end
+  end
+
+  def self.all_categories
+    [
+      "",
+      "Position",
+      "Education",
+      "Membership",
+      "Family",
+      "Donation",
+      "Transaction",
+      "Lobbying",
+      "Social",
+      "Professional",
+      "Ownership"  
+    ]
+  end
+
+  def self.all_categories_with_fields
+    [
+      "Position",
+      "Education",
+      "Membership",
+      "Donation",
+      "Transaction",
+      "Ownership"
+    ]
+  end
+
+  def category_name
+    self.class.all_categories[category_id]
+  end
+  
+  def all_attributes
+    hash = attributes.merge!(category_attributes).reject { |k,v| v.nil? }
+    hash.delete("notes")
+    hash
+  end
+
+  def category_attributes
+    return nil unless category_name & self.class.all_categories_with_fields
+    category = Kernel.const_get(category_name).where(relationship_id: id).first
+    hash = category.attributes
+    hash.delete("id")
+    hash.delete("relationship_id")
+    hash
+  end
+end
 
 class Reference < ActiveRecord::Base; end
+
+class LsNote < ActiveRecord::Base
+  def self.table_name
+    'note'
+  end
+end
 
 # EXTENSION CLASSES
 class ExtensionRecord < ActiveRecord::Base; end

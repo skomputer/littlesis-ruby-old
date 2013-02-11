@@ -2,8 +2,8 @@ class Source
   include Mongoid::Document
   include Mongoid::Timestamps::Created
 
-  embedded_in :node
+  embedded_in :sourceable, polymorphic: true
 
-  field :title, type: String
+  field :name, type: String
   field :url, type: String
 end

@@ -1,24 +1,22 @@
 require 'mongoid'
 require './mongoid_dates.rb'
+require './mongoid_last_user.rb'
 require './source.rb'
 
 class Edge
   include Mongoid::Document
   include Mongoid::Timestamps  
-  include Mongoid::Paranoia
   include MongoidDates
+  include MongoidLastUser
 
   field :node_id
   field :related_id
   field :category
   field :description
-  field :is_deleted, type: Boolean
   field :reverse_of
   
-  embeds_many :sources
+  embeds_many :sources, as: :sourceable
   belongs_to :node
-
-  validates_presence_of :node_id, :related_id, :category
 
   def self.valid_categories
     ["Position", "Education", "Membership", "Family", "Donation", "Transaction", 
@@ -43,5 +41,10 @@ class Edge
   
   def reverse
     Edge.find(reverse_of)
+  end
+
+  def has_source_url?(url)
+    sources.each { |s| return true if s.url == url }
+    return false
   end
 end
